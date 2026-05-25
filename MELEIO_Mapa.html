@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MELEIO — Mapa de Documentos</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #0e0e0d;
+    --bg2: #171715;
+    --bg3: #1f1f1c;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --text: #e8e5dc;
+    --text2: #8a887f;
+    --text3: #555450;
+    --accent: #c8b87a;
+    --panel-w: 300px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  #app { width: 100vw; height: 100vh; position: relative; }
+
+  canvas {
+    display: block;
+    cursor: grab;
+    width: 100%;
+    height: 100%;
+  }
+  canvas.dragging { cursor: grabbing; }
+
+  /* PANEL */
+  #panel {
+    position: fixed;
+    top: 0; right: 0;
+    width: var(--panel-w);
+    height: 100vh;
+    background: var(--bg2);
+    border-left: 0.5px solid var(--border2);
+    transform: translateX(100%);
+    transition: transform .3s cubic-bezier(.4,0,.2,1);
+    overflow-y: auto;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+  }
+  #panel.open { transform: translateX(0); }
+
+  #panel-header {
+    padding: 20px 20px 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  #panel-eixo {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-bottom: 8px;
+  }
+
+  #panel-title {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+    line-height: 1.4;
+    margin-bottom: 4px;
+  }
+
+  #panel-sub {
+    font-size: 12px;
+    color: var(--text2);
+    margin-bottom: 16px;
+  }
+
+  #panel-close {
+    background: none;
+    border: 0.5px solid var(--border2);
+    border-radius: 6px;
+    color: var(--text2);
+    cursor: pointer;
+    padding: 5px 8px;
+    font-size: 14px;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-top: 2px;
+    transition: border-color .15s, color .15s;
+  }
+  #panel-close:hover { border-color: var(--text2); color: var(--text); }
+
+  #panel-body { padding: 0 20px 24px; flex: 1; }
+
+  .p-desc {
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.7;
+    margin-bottom: 20px;
+    padding: 14px;
+    background: var(--bg3);
+    border-radius: 8px;
+    border: 0.5px solid var(--border);
+  }
+
+  .p-badge {
+    display: inline-block;
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 20px;
+    margin-bottom: 16px;
+  }
+  .badge-rascunho { background: rgba(186,117,23,0.15); color: #BA7517; border: 0.5px solid rgba(186,117,23,0.3); }
+  .badge-revisao  { background: rgba(55,138,221,0.12); color: #378ADD; border: 0.5px solid rgba(55,138,221,0.25); }
+  .badge-final    { background: rgba(29,158,117,0.12); color: #1D9E75; border: 0.5px solid rgba(29,158,117,0.25); }
+
+  .p-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--accent);
+    text-decoration: none;
+    padding: 10px 14px;
+    border: 0.5px solid rgba(200,184,122,0.25);
+    border-radius: 8px;
+    transition: background .15s, border-color .15s;
+    margin-bottom: 8px;
+  }
+  .p-link:hover { background: rgba(200,184,122,0.06); border-color: rgba(200,184,122,0.4); }
+  .p-link.disabled { color: var(--text3); border-color: var(--border); cursor: default; pointer-events: none; }
+
+  .p-date {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text3);
+    margin-top: 16px;
+  }
+
+  .doc-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+  .doc-item {
+    padding: 10px 12px;
+    border: 0.5px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .doc-item:hover { border-color: var(--border2); background: var(--bg3); }
+  .doc-item-name { font-size: 12px; font-weight: 500; color: var(--text); margin-bottom: 2px; }
+  .doc-item-sub  { font-size: 11px; color: var(--text3); }
+
+  /* HEADER */
+  #header {
+    position: fixed;
+    top: 20px; left: 20px;
+    z-index: 10;
+    pointer-events: none;
+  }
+  #header-title {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--text2);
+    margin-bottom: 2px;
+  }
+  #header-sub {
+    font-size: 11px;
+    color: var(--text3);
+  }
+
+  /* CONTROLS */
+  #controls {
+    position: fixed;
+    bottom: 20px; left: 20px;
+    z-index: 10;
+    display: flex;
+    gap: 8px;
+  }
+  .ctrl-btn {
+    background: var(--bg2);
+    border: 0.5px solid var(--border2);
+    border-radius: 8px;
+    color: var(--text2);
+    cursor: pointer;
+    padding: 7px 14px;
+    font-size: 12px;
+    font-family: 'DM Sans', sans-serif;
+    transition: border-color .15s, color .15s;
+  }
+  .ctrl-btn:hover { border-color: var(--text2); color: var(--text); }
+
+  /* LEGEND */
+  #legend {
+    position: fixed;
+    bottom: 20px; right: 20px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  #legend.shifted { right: calc(var(--panel-w) + 20px); }
+  .leg-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 10px;
+    font-family: 'DM Mono', monospace;
+    color: var(--text3);
+    letter-spacing: 1px;
+  }
+  .leg-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  /* TOOLTIP */
+  #tooltip {
+    position: fixed;
+    pointer-events: none;
+    background: var(--bg2);
+    border: 0.5px solid var(--border2);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--text);
+    opacity: 0;
+    transition: opacity .12s;
+    z-index: 30;
+    max-width: 220px;
+  }
+  #tooltip span { display: block; font-size: 10px; color: var(--text2); margin-top: 2px; }
+
+  /* LOADER */
+  #loader {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+    z-index: 100;
+    transition: opacity .4s;
+  }
+  #loader.hidden { opacity: 0; pointer-events: none; }
+  #loader-text {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--text3);
+  }
+  .loader-ring {
+    width: 32px; height: 32px;
+    border: 1.5px solid var(--border2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="loader-ring"></div>
+  <div id="loader-text">carregando mapa</div>
+</div>
+
+<div id="app">
+  <canvas id="canvas"></canvas>
+
+  <div id="header">
+    <div id="header-title">MELEIO</div>
+    <div id="header-sub">banco de documentos</div>
+  </div>
+
+  <div id="controls">
+    <button class="ctrl-btn" onclick="resetView()">↺ resetar</button>
+    <button class="ctrl-btn" onclick="reloadData()">↻ atualizar</button>
+  </div>
+
+  <div id="legend">
+    <div class="leg-item"><div class="leg-dot" style="background:#1D9E75"></div>finalizado</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#378ADD"></div>em revisão</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#BA7517"></div>rascunho</div>
+  </div>
+
+  <div id="tooltip"></div>
+
+  <div id="panel">
+    <div id="panel-header">
+      <div style="flex:1">
+        <div id="panel-eixo"></div>
+        <div id="panel-title"></div>
+        <div id="panel-sub"></div>
+      </div>
+      <button id="panel-close" onclick="closePanel()">✕</button>
+    </div>
+    <div id="panel-body"></div>
+  </div>
+</div>
+
+<script>
+const SHEET_ID = '1A_lLuo1DU6BZ0yORc4AghrAgD5nAdEO2VZzJaS5b-kE';
+const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Sheet1`;
+
+const EIXOS_CONFIG = [
+  { id:'Pedagógico',            color:'#8B7FE8', ring:'rgba(139,127,232,0.18)' },
+  { id:'Avaliação (PULSO)',     color:'#4DB896', ring:'rgba(77,184,150,0.18)'  },
+  { id:'Formação de professor', color:'#E8845A', ring:'rgba(232,132,90,0.18)' },
+  { id:'IA',                    color:'#5BA8E8', ring:'rgba(91,168,232,0.18)' },
+  { id:'Família',               color:'#E87FA8', ring:'rgba(232,127,168,0.18)'},
+  { id:'Comercial',             color:'#E8C05A', ring:'rgba(232,192,90,0.18)' },
+  { id:'Regulatório',           color:'#7EC87E', ring:'rgba(126,200,126,0.18)'},
+  { id:'Produto e Tecnologia',  color:'#A0A09A', ring:'rgba(160,160,154,0.18)'},
+  { id:'Evidência e Pesquisa',  color:'#E87070', ring:'rgba(232,112,112,0.18)'},
+  { id:'Institucional',         color:'#9B8FD8', ring:'rgba(155,143,216,0.18)'},
+];
+
+const STATUS_COLOR = {
+  'Finalizado': '#1D9E75',
+  'Em revisão': '#378ADD',
+  'Rascunho':   '#BA7517',
+};
+
+function eixoConfig(label) {
+  return EIXOS_CONFIG.find(e => label && label.toLowerCase().includes(e.id.toLowerCase()))
+    || EIXOS_CONFIG.find(e => e.id === 'Produto e Tecnologia');
+}
+
+let docs = [];
+let nodes = [];
+let transform = { x: 0, y: 0, scale: 1 };
+let drag = { active: false, sx: 0, sy: 0, tx: 0, ty: 0, moved: false };
+let hoveredNode = null;
+let panelOpen = false;
+let activeNode = null;
+let animFrame = null;
+let dirty = true;
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let W = window.innerWidth;
+let H = window.innerHeight;
+let CX = 0, CY = 0;
+
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  CX = 0; CY = 0;
+  transform = { x: W / 2, y: H / 2, scale: 1 };
+  buildNodes();
+  dirty = true;
+}
+
+function buildNodes() {
+  nodes = [];
+  const grouped = {};
+  docs.forEach(d => {
+    const key = d.eixo;
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(d);
+  });
+
+  const allEixos = [...new Set([
+    ...EIXOS_CONFIG.map(e => e.id),
+    ...Object.keys(grouped)
+  ])];
+
+  const n = allEixos.length;
+  const eixoR = Math.min(W, H) * 0.28;
+  const docBaseR = Math.min(W, H) * 0.44;
+
+  allEixos.forEach((eixoId, i) => {
+    const angle = (2 * Math.PI * i / n) - Math.PI / 2;
+    const cfg = eixoConfig(eixoId);
+    const ex = CX + eixoR * Math.cos(angle);
+    const ey = CY + eixoR * Math.sin(angle);
+
+    nodes.push({
+      type: 'eixo',
+      id: eixoId,
+      label: eixoId,
+      color: cfg.color,
+      ring: cfg.ring,
+      x: ex, y: ey,
+      angle, r: 36
+    });
+
+    const eDocs = grouped[eixoId] || [];
+    eDocs.forEach((d, j) => {
+      const total = eDocs.length;
+      const spread = Math.min(Math.PI * 0.35, Math.PI * 0.1 * total);
+      const dAngle = angle + (total > 1 ? spread * (j / (total - 1) - 0.5) : 0);
+      const dr = docBaseR + Math.floor(j / 5) * 28;
+      nodes.push({
+        type: 'doc',
+        eixoId,
+        color: cfg.color,
+        x: CX + dr * Math.cos(dAngle),
+        y: CY + dr * Math.sin(dAngle),
+        r: 9,
+        data: d
+      });
+    });
+  });
+}
+
+function draw() {
+  if (!dirty) return;
+  dirty = false;
+  ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(transform.x, transform.y);
+  ctx.scale(transform.scale, transform.scale);
+
+  // grid dots background
+  ctx.fillStyle = 'rgba(255,255,255,0.025)';
+  const gs = 40;
+  const ox = (-transform.x / transform.scale) % gs;
+  const oy = (-transform.y / transform.scale) % gs;
+  for (let gx = ox - gs; gx < W / transform.scale + gs; gx += gs)
+    for (let gy = oy - gs; gy < H / transform.scale + gs; gy += gs)
+      ctx.fillRect(gx, gy, 1.5, 1.5);
+
+  // connector lines: eixo → doc
+  nodes.forEach(n => {
+    if (n.type !== 'doc') return;
+    const en = nodes.find(e => e.type === 'eixo' && e.id === n.eixoId);
+    if (!en) return;
+    ctx.beginPath();
+    ctx.moveTo(en.x, en.y);
+    ctx.lineTo(n.x, n.y);
+    ctx.strokeStyle = n.color + '18';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+  });
+
+  // spoke lines: center → eixo
+  nodes.forEach(n => {
+    if (n.type !== 'eixo') return;
+    ctx.beginPath();
+    ctx.moveTo(CX, CY);
+    ctx.lineTo(n.x, n.y);
+    ctx.strokeStyle = n.color + '22';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+
+  // doc nodes
+  nodes.forEach(n => {
+    if (n.type !== 'doc') return;
+    const hov = n === hoveredNode;
+    const act = n === activeNode;
+    const sc = STATUS_COLOR[n.data.status] || '#666';
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, n.r + (hov || act ? 3 : 0), 0, Math.PI * 2);
+    ctx.fillStyle = act ? n.color + 'cc' : sc + '18';
+    ctx.fill();
+    ctx.strokeStyle = act ? n.color : sc;
+    ctx.lineWidth = act ? 2 : 1.5;
+    ctx.stroke();
+  });
+
+  // eixo nodes
+  nodes.forEach(n => {
+    if (n.type !== 'eixo') return;
+    const hov = n === hoveredNode;
+    const act = n === activeNode;
+
+    // ring glow
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, n.r + 10, 0, Math.PI * 2);
+    ctx.fillStyle = (hov || act) ? n.ring.replace('0.18', '0.35') : n.ring;
+    ctx.fill();
+
+    // circle
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+    ctx.fillStyle = act ? n.color : '#171715';
+    ctx.fill();
+    ctx.strokeStyle = n.color;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // label
+    ctx.fillStyle = act ? '#fff' : n.color;
+    ctx.font = `500 10px 'DM Sans', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const words = n.label.split(' ');
+    const lh = 12;
+    const lines = [];
+    let cur = '';
+    words.forEach(w => {
+      const test = cur ? cur + ' ' + w : w;
+      if (ctx.measureText(test).width > n.r * 1.7 && cur) {
+        lines.push(cur); cur = w;
+      } else cur = test;
+    });
+    if (cur) lines.push(cur);
+    const startY = n.y - (lines.length - 1) * lh / 2;
+    lines.forEach((l, i) => ctx.fillText(l, n.x, startY + i * lh));
+  });
+
+  // center node
+  ctx.beginPath();
+  ctx.arc(CX, CY, 42, 0, Math.PI * 2);
+  ctx.fillStyle = '#171715';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(200,184,122,0.4)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.fillStyle = '#c8b87a';
+  ctx.font = `500 13px 'DM Mono', monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('MELEIO', CX, CY - 7);
+  ctx.fillStyle = '#555450';
+  ctx.font = `400 8px 'DM Mono', monospace`;
+  ctx.fillText('banco de docs', CX, CY + 7);
+
+  ctx.restore();
+}
+
+function loop() {
+  draw();
+  animFrame = requestAnimationFrame(loop);
+}
+
+function toWorld(ex, ey) {
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: (ex - r.left - transform.x) / transform.scale,
+    y: (ey - r.top  - transform.y) / transform.scale,
+  };
+}
+
+function hitNode(ex, ey) {
+  const { x, y } = toWorld(ex, ey);
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i];
+    if (Math.hypot(x - n.x, y - n.y) < n.r + 8) return n;
+  }
+  return null;
+}
+
+canvas.addEventListener('mousedown', e => {
+  drag.active = true;
+  drag.moved = false;
+  drag.sx = e.clientX; drag.sy = e.clientY;
+  drag.tx = transform.x; drag.ty = transform.y;
+  canvas.classList.add('dragging');
+});
+
+canvas.addEventListener('mousemove', e => {
+  const n = hitNode(e.clientX, e.clientY);
+  if (n !== hoveredNode) { hoveredNode = n; dirty = true; }
+  canvas.style.cursor = n ? 'pointer' : (drag.active ? 'grabbing' : 'grab');
+  showTooltip(n, e.clientX, e.clientY);
+  if (drag.active) {
+    const dx = e.clientX - drag.sx;
+    const dy = e.clientY - drag.sy;
+    if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+    transform.x = drag.tx + dx;
+    transform.y = drag.ty + dy;
+    dirty = true;
+  }
+});
+
+canvas.addEventListener('mouseup', e => {
+  drag.active = false;
+  canvas.classList.remove('dragging');
+  if (!drag.moved) {
+    const n = hitNode(e.clientX, e.clientY);
+    if (n) openPanel(n);
+    else if (panelOpen) closePanel();
+  }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  drag.active = false;
+  canvas.classList.remove('dragging');
+  hoveredNode = null;
+  dirty = true;
+  document.getElementById('tooltip').style.opacity = 0;
+});
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const f = e.deltaY < 0 ? 1.1 : 0.91;
+  const r = canvas.getBoundingClientRect();
+  const mx = e.clientX - r.left;
+  const my = e.clientY - r.top;
+  transform.x = mx + (transform.x - mx) * f;
+  transform.y = my + (transform.y - my) * f;
+  transform.scale = Math.max(0.25, Math.min(4, transform.scale * f));
+  dirty = true;
+}, { passive: false });
+
+// touch
+let lastTouch = null;
+canvas.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) {
+    drag.active = true; drag.moved = false;
+    drag.sx = e.touches[0].clientX; drag.sy = e.touches[0].clientY;
+    drag.tx = transform.x; drag.ty = transform.y;
+  }
+  lastTouch = e.touches[0];
+});
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (e.touches.length === 1 && drag.active) {
+    const dx = e.touches[0].clientX - drag.sx;
+    const dy = e.touches[0].clientY - drag.sy;
+    if (Math.abs(dx) + Math.abs(dy) > 5) drag.moved = true;
+    transform.x = drag.tx + dx;
+    transform.y = drag.ty + dy;
+    dirty = true;
+  }
+}, { passive: false });
+canvas.addEventListener('touchend', e => {
+  drag.active = false;
+  if (!drag.moved && lastTouch) {
+    const n = hitNode(lastTouch.clientX, lastTouch.clientY);
+    if (n) openPanel(n);
+  }
+});
+
+function showTooltip(node, ex, ey) {
+  const tt = document.getElementById('tooltip');
+  if (!node) { tt.style.opacity = 0; return; }
+  tt.innerHTML = node.type === 'eixo'
+    ? `<strong>${node.label}</strong>`
+    : `<strong>${node.data.nome}</strong><span>${node.data.subeixo}</span>`;
+  tt.style.opacity = 1;
+  let lx = ex + 14, ly = ey - 10;
+  if (lx + 230 > window.innerWidth) lx = ex - 230;
+  tt.style.left = lx + 'px';
+  tt.style.top  = ly + 'px';
+}
+
+function openPanel(node) {
+  activeNode = node;
+  dirty = true;
+  panelOpen = true;
+  document.getElementById('panel').classList.add('open');
+  document.getElementById('legend').classList.add('shifted');
+
+  const eixoEl  = document.getElementById('panel-eixo');
+  const titleEl = document.getElementById('panel-title');
+  const subEl   = document.getElementById('panel-sub');
+  const bodyEl  = document.getElementById('panel-body');
+
+  if (node.type === 'eixo') {
+    const cfg = eixoConfig(node.id);
+    const eDocs = nodes.filter(n => n.type === 'doc' && n.eixoId === node.id);
+    eixoEl.textContent = 'eixo';
+    eixoEl.style.color = cfg.color;
+    titleEl.textContent = node.label;
+    subEl.textContent = eDocs.length + ' documento' + (eDocs.length !== 1 ? 's' : '');
+    bodyEl.innerHTML = `<div class="doc-list">${eDocs.map((d, i) => {
+      const sc = STATUS_COLOR[d.data.status] || '#666';
+      return `<div class="doc-item" onclick="openDocNode(${nodes.indexOf(d)})">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+          <div style="width:6px;height:6px;border-radius:50%;background:${sc};flex-shrink:0"></div>
+          <div class="doc-item-name">${d.data.nome}</div>
+        </div>
+        <div class="doc-item-sub">${d.data.subeixo}</div>
+      </div>`;
+    }).join('')}</div>`;
+  } else {
+    renderDoc(node, eixoEl, titleEl, subEl, bodyEl);
+  }
+}
+
+function openDocNode(idx) {
+  const n = nodes[idx];
+  if (!n) return;
+  activeNode = n;
+  dirty = true;
+  const eixoEl  = document.getElementById('panel-eixo');
+  const titleEl = document.getElementById('panel-title');
+  const subEl   = document.getElementById('panel-sub');
+  const bodyEl  = document.getElementById('panel-body');
+  renderDoc(n, eixoEl, titleEl, subEl, bodyEl);
+}
+
+function renderDoc(node, eixoEl, titleEl, subEl, bodyEl) {
+  const d = node.data;
+  const cfg = eixoConfig(node.eixoId);
+  eixoEl.textContent = d.eixo;
+  eixoEl.style.color = cfg.color;
+  titleEl.textContent = d.nome;
+  subEl.textContent = d.subeixo;
+
+  const bClass = d.status === 'Finalizado' ? 'badge-final'
+               : d.status === 'Em revisão' ? 'badge-revisao'
+               : 'badge-rascunho';
+  const hasLink = d.link && d.link.startsWith('http') && d.link.length > 8;
+
+  bodyEl.innerHTML = `
+    <span class="p-badge ${bClass}">${d.status}</span>
+    <div class="p-desc">${d.desc || 'Sem descrição.'}</div>
+    ${hasLink
+      ? `<a class="p-link" href="${d.link}" target="_blank">↗ abrir no drive</a>`
+      : `<div class="p-link disabled">↗ link pendente</div>`}
+    <div class="p-date">${d.data}</div>`;
+}
+
+function closePanel() {
+  panelOpen = false;
+  activeNode = null;
+  dirty = true;
+  document.getElementById('panel').classList.remove('open');
+  document.getElementById('legend').classList.remove('shifted');
+}
+
+function resetView() {
+  transform = { x: W / 2, y: H / 2, scale: 1 };
+  dirty = true;
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  return lines.slice(1).map(line => {
+    const cols = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') { inQ = !inQ; continue; }
+      if (c === ',' && !inQ) { cols.push(cur.trim()); cur = ''; continue; }
+      cur += c;
+    }
+    cols.push(cur.trim());
+    return {
+      eixo: cols[0] || '',
+      subeixo: cols[1] || '',
+      nome: cols[2] || '',
+      link: cols[3] || '',
+      desc: cols[4] || '',
+      status: cols[5] || 'Rascunho',
+      data: cols[6] || '',
+    };
+  }).filter(d => d.nome && d.eixo);
+}
+
+function reloadData() {
+  document.getElementById('loader-text').textContent = 'atualizando...';
+  document.getElementById('loader').classList.remove('hidden');
+  fetchData();
+}
+
+function fetchData() {
+  fetch(SHEET_URL + '&cachebust=' + Date.now())
+    .then(r => r.text())
+    .then(csv => {
+      const loaded = parseCSV(csv);
+      if (loaded.length > 0) docs = loaded;
+      buildNodes();
+      dirty = true;
+      document.getElementById('loader').classList.add('hidden');
+    })
+    .catch(() => {
+      document.getElementById('loader').classList.add('hidden');
+    });
+}
+
+window.addEventListener('resize', resize);
+resize();
+loop();
+fetchData();
+</script>
+</body>
+</html>
